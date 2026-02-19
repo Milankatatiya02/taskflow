@@ -1,0 +1,42 @@
+{
+  "users": [
+    {
+      "id": "fff6d839-2abe-42a4-a026-55bf8bc93130",
+      "name": "milan",
+      "email": "milan@exampale.com",
+      "password": "Milan@123",
+      "createdAt": "2026-02-13T12:17:09.043022"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "f1127770-6f46-433d-86a7-cfa6f6c5d6a4",
+      "userId": "fff6d839-2abe-42a4-a026-55bf8bc93130",
+      "title": "ijiwjjijjjjj",
+      "description": "ijdijjoj",
+      "status": "In Progress",
+      "priority": "High",
+      "createdAt": "2026-02-13T12:35:55.004620",
+      "updatedAt": "2026-02-16T10:58:51.384002"
+    },
+    {
+      "id": "c8808b90-b130-4472-a9cb-ba3ba6de75a5",
+      "userId": "undefined",
+      "title": "task-2 complete backend",
+      "description": "create all endpoints",
+      "status": "Pending",
+      "priority": "Medium",
+      "createdAt": "2026-02-19T14:38:08.979137",
+      "updatedAt": "2026-02-19T14:38:08.979305"
+    }
+  ],
+  "preferences": {
+    "undefined": {
+      "emailNotifications": true,
+      "pushNotifications": true,
+      "taskReminders": true,
+      "weeklyReport": true,
+      "twoFactor": false
+    }
+  }
+}
