@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { useDispatch, useSelector } from 'react-redux';
 import {
     Box,
     Container,
@@ -10,9 +11,7 @@ import {
     Card,
     CardContent,
     Paper,
-    Alert,
-    useMediaQuery,
-    useTheme
+    Alert
 } from '@mui/material';
 import {
     Email as EmailIcon,
@@ -20,18 +19,16 @@ import {
     LocationOn as LocationIcon,
     Send as SendIcon,
 } from '@mui/icons-material';
+import {
+    clearError,
+    clearSubmittedState,
+    submitContactForm,
+    updateField,
+} from '../store/slices/contactSlice';
 
 function ContactUs() {
-    const theme = useTheme();
-    const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-    const [formData, setFormData] = useState({
-        name: '',
-        email: '',
-        subject: '',
-        message: '',
-    });
-    const [submitted, setSubmitted] = useState(false);
-    const [loading, setLoading] = useState(false);
+    const dispatch = useDispatch();
+    const { formData, submitted, loading, error, submissionHistory } = useSelector((state) => state.contact);
 
     const contactInfo = [
         {
@@ -56,32 +53,31 @@ function ContactUs() {
 
     const handleInputChange = (e) => {
         const { name, value } = e.target;
-        setFormData(prev => ({
-            ...prev,
-            [name]: value,
-        }));
+        dispatch(updateField({ name, value }));
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        setLoading(true);
-
-        try {
-            // Simulating API call - replace with actual backend endpoint
-            await new Promise(resolve => setTimeout(resolve, 1000));
-
-            console.log('Form submitted:', formData);
-            setSubmitted(true);
-            setFormData({ name: '', email: '', subject: '', message: '' });
-
-            // Hide success message after 5 seconds
-            setTimeout(() => setSubmitted(false), 5000);
-        } catch (error) {
-            console.error('Failed to submit form:', error);
-        } finally {
-            setLoading(false);
-        }
+        dispatch(submitContactForm(formData));
     };
+
+    useEffect(() => {
+        if (!submitted) {
+            return undefined;
+        }
+
+        const timeoutId = setTimeout(() => dispatch(clearSubmittedState()), 5000);
+        return () => clearTimeout(timeoutId);
+    }, [dispatch, submitted]);
+
+    useEffect(() => {
+        if (!error) {
+            return undefined;
+        }
+
+        const timeoutId = setTimeout(() => dispatch(clearError()), 5000);
+        return () => clearTimeout(timeoutId);
+    }, [dispatch, error]);
 
     return (
         <Box sx={{ py: { xs: 4, md: 8 }, bgcolor: '#f5f7fa', minHeight: '90vh' }}>
@@ -191,6 +187,13 @@ function ContactUs() {
                             <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
                                 <Alert severity="success" sx={{ mb: 3 }}>
                                     Thank you for your message! We'll get back to you soon.
+                                </Alert>
+                            </motion.div>
+                        )}
+                        {error && (
+                            <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
+                                <Alert severity="error" sx={{ mb: 3 }}>
+                                    {error}
                                 </Alert>
                             </motion.div>
                         )}
@@ -327,6 +330,9 @@ function ContactUs() {
                             <Typography variant="caption" color="textSecondary" sx={{ fontSize: { xs: '0.75rem', sm: '0.85rem' } }}>
                                 Our support team typically responds to all inquiries within 24 hours. For urgent matters,
                                 please call us directly at the number provided above.
+                            </Typography>
+                            <Typography variant="caption" sx={{ color: '#666', mt: 1.5, display: 'block', fontSize: { xs: '0.75rem', sm: '0.85rem' } }}>
+                                Messages sent this session: {submissionHistory.length}
                             </Typography>
                         </Box>
                     </Paper>
