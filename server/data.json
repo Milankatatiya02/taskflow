@@ -6,6 +6,15 @@
       "email": "milan@exampale.com",
       "password": "Milan@123",
       "createdAt": "2026-02-13T12:17:09.043022"
+    },
+    {
+      "id": "994f95e7-0cef-4152-be94-d7d4388cfb42",
+      "name": "milan",
+      "email": "milankatariya9774@gmail.com",
+      "password": "Milan@123",
+      "phone": "",
+      "bio": "",
+      "createdAt": "2026-02-26T15:07:27.073452"
     }
   ],
   "tasks": [
@@ -28,10 +37,27 @@
       "priority": "Medium",
       "createdAt": "2026-02-19T14:38:08.979137",
       "updatedAt": "2026-02-19T14:38:08.979305"
+    },
+    {
+      "id": "d02660af-ee93-4d7d-95f8-96ff9661b760",
+      "userId": "994f95e7-0cef-4152-be94-d7d4388cfb42",
+      "title": "frontend",
+      "description": "build frontend for e-commers",
+      "status": "Completed",
+      "priority": "High",
+      "createdAt": "2026-02-26T15:08:26.975230",
+      "updatedAt": "2026-02-26T15:16:37.393078"
     }
   ],
   "preferences": {
     "undefined": {
+      "emailNotifications": true,
+      "pushNotifications": true,
+      "taskReminders": true,
+      "weeklyReport": true,
+      "twoFactor": false
+    },
+    "994f95e7-0cef-4152-be94-d7d4388cfb42": {
       "emailNotifications": true,
       "pushNotifications": true,
       "taskReminders": true,
