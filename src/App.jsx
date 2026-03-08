@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
+import { ThemeProvider, createTheme, CssBaseline, GlobalStyles } from '@mui/material';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ThemeModeProvider, useThemeMode } from './context/ThemeModeContext';
 import Navbar from './components/Navbar';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
@@ -10,21 +11,6 @@ import Tasks from './pages/Tasks';
 import AboutUs from './pages/AboutUs';
 import ContactUs from './pages/ContactUs';
 import Profile from './pages/Profile';
-
-// MUI Theme customization
-const theme = createTheme({
-  typography: {
-    fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
-  },
-  shape: {
-    borderRadius: 8,
-  },
-  palette: {
-    primary: {
-      main: '#6C63FF',
-    },
-  },
-});
 
 // Wrapper to handle auth redirects
 function AppRoutes() {
@@ -49,16 +35,57 @@ function AppRoutes() {
   );
 }
 
-function App() {
+function ThemedApp() {
+  const { mode } = useThemeMode();
+  const isDark = mode === 'dark';
+  const theme = createTheme({
+    typography: {
+      fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
+    },
+    shape: {
+      borderRadius: 10,
+    },
+    palette: {
+      mode,
+      primary: {
+        main: '#6C63FF',
+      },
+      secondary: {
+        main: '#14B8A6',
+      },
+      background: {
+        default: isDark ? '#0f1222' : '#f4f6ff',
+        paper: isDark ? '#171b31' : '#ffffff',
+      },
+    },
+  });
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
+      <GlobalStyles
+        styles={{
+          body: {
+            background: isDark
+              ? 'radial-gradient(circle at 10% 20%, #1c2140 0%, #0f1222 40%, #0b0e1a 100%)'
+              : 'radial-gradient(circle at 0% 0%, #eef1ff 0%, #f8f9ff 50%, #f4f6ff 100%)',
+          },
+        }}
+      />
       <Router>
         <AuthProvider>
           <AppRoutes />
         </AuthProvider>
       </Router>
     </ThemeProvider>
+  );
+}
+
+function App() {
+  return (
+    <ThemeModeProvider>
+      <ThemedApp />
+    </ThemeModeProvider>
   );
 }
 

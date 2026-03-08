@@ -11,7 +11,8 @@ import {
     Card,
     CardContent,
     Paper,
-    Alert
+    Alert,
+    useTheme
 } from '@mui/material';
 import {
     Email as EmailIcon,
@@ -28,6 +29,8 @@ import {
 
 function ContactUs() {
     const dispatch = useDispatch();
+    const theme = useTheme();
+    const isDark = theme.palette.mode === 'dark';
     const { formData, submitted, loading, error, submissionHistory } = useSelector((state) => state.contact);
 
     const contactInfo = [
@@ -80,7 +83,7 @@ function ContactUs() {
     }, [dispatch, error]);
 
     return (
-        <Box sx={{ py: { xs: 4, md: 8 }, bgcolor: '#f5f7fa', minHeight: '90vh' }}>
+        <Box sx={{ py: { xs: 4, md: 8 }, bgcolor: 'transparent', minHeight: '90vh' }}>
             <Container maxWidth="lg">
                 {/* Hero Section */}
                 <motion.div initial={{ opacity: 0, y: -30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
@@ -91,7 +94,7 @@ function ContactUs() {
                             sx={{
                                 fontWeight: 700,
                                 mb: 3,
-                                color: '#1a1a2e',
+                                color: 'text.primary',
                             }}
                         >
                             Get in Touch
@@ -99,7 +102,7 @@ function ContactUs() {
                         <Typography
                             variant="body2"
                             sx={{
-                                color: '#666',
+                                color: 'text.secondary',
                                 maxWidth: '600px',
                                 mx: 'auto',
                                 lineHeight: 1.8,
@@ -126,12 +129,12 @@ function ContactUs() {
                                     sx={{
                                         height: '100%',
                                         textAlign: 'center',
-                                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                                        boxShadow: isDark ? '0 4px 14px rgba(0,0,0,0.35)' : '0 2px 8px rgba(0,0,0,0.1)',
                                         borderRadius: 2,
                                         p: { xs: 2, md: 3 },
                                         transition: 'all 0.3s ease',
                                         '&:hover': {
-                                            boxShadow: '0 8px 16px rgba(108, 99, 255, 0.15)',
+                                            boxShadow: isDark ? '0 10px 20px rgba(108, 99, 255, 0.2)' : '0 8px 16px rgba(108, 99, 255, 0.15)',
                                         },
                                     }}
                                 >
@@ -144,7 +147,7 @@ function ContactUs() {
                                             sx={{
                                                 fontWeight: 700,
                                                 mb: 1,
-                                                color: '#1a1a2e',
+                                                color: 'text.primary',
                                                 fontSize: { xs: '1rem', md: '1.25rem' }
                                             }}
                                         >
@@ -177,7 +180,7 @@ function ContactUs() {
                         elevation={0}
                         sx={{
                             p: { xs: 2.5, md: 6 },
-                            bgcolor: 'white',
+                            bgcolor: 'background.paper',
                             borderRadius: 2,
                             maxWidth: '700px',
                             mx: 'auto',
@@ -323,15 +326,15 @@ function ContactUs() {
                             </Grid>
                         </form>
 
-                        <Box sx={{ mt: 4, pt: 4, borderTop: '1px solid #e0e0e0' }}>
-                            <Typography variant={{ xs: 'caption', sm: 'subtitle2' }} sx={{ color: '#666', mb: 2, display: 'block', fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
+                        <Box sx={{ mt: 4, pt: 4, borderTop: `1px solid ${theme.palette.divider}` }}>
+                            <Typography variant={{ xs: 'caption', sm: 'subtitle2' }} sx={{ color: 'text.secondary', mb: 2, display: 'block', fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
                                 Quick Response Times
                             </Typography>
                             <Typography variant="caption" color="textSecondary" sx={{ fontSize: { xs: '0.75rem', sm: '0.85rem' } }}>
                                 Our support team typically responds to all inquiries within 24 hours. For urgent matters,
                                 please call us directly at the number provided above.
                             </Typography>
-                            <Typography variant="caption" sx={{ color: '#666', mt: 1.5, display: 'block', fontSize: { xs: '0.75rem', sm: '0.85rem' } }}>
+                            <Typography variant="caption" sx={{ color: 'text.secondary', mt: 1.5, display: 'block', fontSize: { xs: '0.75rem', sm: '0.85rem' } }}>
                                 Messages sent this session: {submissionHistory.length}
                             </Typography>
                         </Box>

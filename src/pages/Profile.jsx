@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
+import { useThemeMode } from '../context/ThemeModeContext';
 import { userAPI, taskAPI, handleAPIError } from '../services/api';
 import {
     Box,
@@ -38,6 +39,7 @@ import {
 
 function Profile() {
     const { user, updateUser } = useAuth();
+    const { mode, toggleMode } = useThemeMode();
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
     const [tabValue, setTabValue] = useState(0);
@@ -81,21 +83,31 @@ function Profile() {
         taskReminders: true,
         weeklyReport: true,
         twoFactor: false,
-        darkMode: false,
+        darkMode: mode === 'dark',
     });
+
+    const blurActiveElement = () => {
+        if (document.activeElement instanceof HTMLElement) {
+            document.activeElement.blur();
+        }
+    };
 
     useEffect(() => {
         fetchUserStats();
         fetchUserPreferences();
     }, [user?.id]);
 
+    useEffect(() => {
+        setPreferences((prev) => ({ ...prev, darkMode: mode === 'dark' }));
+    }, [mode]);
+
     const fetchUserStats = async () => {
         try {
           const response = await taskAPI.getAllTasks();
           const tasks = response.data || [];
-          const completed = tasks.filter(t => t.status === 'completed').length;
-          const inProgress = tasks.filter(t => t.status === 'in-progress').length;
-          const pending = tasks.filter(t => t.status === 'pending').length;
+          const completed = tasks.filter(t => t.status === 'Completed').length;
+          const inProgress = tasks.filter(t => t.status === 'In Progress').length;
+          const pending = tasks.filter(t => t.status === 'Pending').length;
           
           setStats([
             { label: 'Total Tasks', value: tasks.length.toString(), color: '#6C63FF' },
@@ -130,6 +142,12 @@ function Profile() {
     };
 
     const handlePreferenceChange = async (key) => {
+        if (key === 'darkMode') {
+            toggleMode();
+            setPreferences(prev => ({ ...prev, darkMode: mode !== 'dark' }));
+            return;
+        }
+
         const updatedPrefs = { ...preferences, [key]: !preferences[key] };
         setPreferences(updatedPrefs);
         
@@ -265,7 +283,7 @@ function Profile() {
     };
 
     return (
-        <Box sx={{ py: { xs: 4, md: 8 }, bgcolor: '#f5f7fa', minHeight: '100vh' }}>
+        <Box sx={{ py: { xs: 4, md: 8 }, bgcolor: 'transparent', minHeight: '100vh' }}>
             <Container maxWidth="lg">
                 {/* Header */}
                 <motion.div initial={{ opacity: 0, y: -30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
@@ -310,19 +328,19 @@ function Profile() {
                                         <Typography variant="h6" fontWeight={700}>
                                             Account Information
                                         </Typography>
-                                        <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                                            <Button
-                                                startIcon={isEditing ? <CancelIcon /> : <EditIcon />}
-                                                onClick={() => isEditing ? handleCancel() : setIsEditing(true)}
-                                                variant={isEditing ? 'outlined' : 'contained'}
-                                                size="small"
-                                                sx={{
-                                                    bgcolor: isEditing ? 'transparent' : '#6C63FF',
-                                                    color: isEditing ? '#f44336' : 'white',
-                                                    borderColor: isEditing ? '#f44336' : 'transparent',
-                                                }}
-                                            >
-                                                {isEditing ? 'Cancel' : 'Edit'}
+                                            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                                                <Button
+                                                    startIcon={isEditing ? <CancelIcon /> : <EditIcon />}
+                                                    onClick={() => isEditing ? handleCancel() : setIsEditing(true)}
+                                                    variant={isEditing ? 'outlined' : 'contained'}
+                                                    size="small"
+                                                    sx={{
+                                                    bgcolor: isEditing ? 'transparent' : 'primary.main',
+                                                    color: isEditing ? 'error.main' : 'primary.contrastText',
+                                                    borderColor: isEditing ? 'error.main' : 'transparent',
+                                                    }}
+                                                >
+                                                    {isEditing ? 'Cancel' : 'Edit'}
                                             </Button>
                                         </motion.div>
                                     </Box>
@@ -391,7 +409,7 @@ function Profile() {
                                                     onClick={handleSaveProfile}
                                                     disabled={loading}
                                                     variant="contained"
-                                                    sx={{ bgcolor: '#4CAF50' }}
+                                                    sx={{ bgcolor: 'success.main' }}
                                                 >
                                                     {loading ? 'Saving...' : 'Save Changes'}
                                                 </Button>
@@ -454,13 +472,13 @@ function Profile() {
                                             {[
                                                 { key: 'darkMode', label: 'Dark Mode', desc: 'Use dark theme for the application' },
                                             ].map((item) => (
-                                                <Box key={item.key} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 2, borderBottom: '1px solid #eee' }}>
+                                                <Box key={item.key} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
                                                     <Box>
                                                         <Typography variant="body2" fontWeight={600}>{item.label}</Typography>
                                                         <Typography variant="caption" color="text.secondary">{item.desc}</Typography>
                                                     </Box>
                                                     <Switch
-                                                        checked={preferences[item.key]}
+                                                        checked={item.key === 'darkMode' ? mode === 'dark' : preferences[item.key]}
                                                         onChange={() => handlePreferenceChange(item.key)}
                                                         sx={{ color: '#6C63FF' }}
                                                     />
@@ -479,7 +497,7 @@ function Profile() {
                                             </Typography>
 
                                             <Box sx={{ mb: 3 }}>
-                                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 2, borderBottom: '1px solid #eee' }}>
+                                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
                                                     <Box>
                                                         <Typography variant="body2" fontWeight={600}>Two-Factor Authentication</Typography>
                                                         <Typography variant="caption" color="text.secondary">Add an extra layer of security</Typography>
@@ -494,7 +512,10 @@ function Profile() {
 
                                             <Button
                                                 variant="outlined"
-                                                onClick={() => setShowChangePassword(true)}
+                                                onClick={() => {
+                                                    blurActiveElement();
+                                                    setShowChangePassword(true);
+                                                }}
                                                 fullWidth
                                                 sx={{ color: '#6C63FF', borderColor: '#6C63FF', textTransform: 'none' }}
                                             >
@@ -521,7 +542,7 @@ function Profile() {
                                                 { key: 'taskReminders', label: 'Task Reminders', desc: 'Get reminded about upcoming tasks' },
                                                 { key: 'weeklyReport', label: 'Weekly Report', desc: 'Receive weekly summary of your tasks' },
                                             ].map((item) => (
-                                                <Box key={item.key} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 2, borderBottom: '1px solid #eee' }}>
+                                                <Box key={item.key} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
                                                     <Box>
                                                         <Typography variant="body2" fontWeight={600}>{item.label}</Typography>
                                                         <Typography variant="caption" color="text.secondary">{item.desc}</Typography>

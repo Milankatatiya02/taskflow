@@ -33,8 +33,10 @@ function AboutUs() {
         },
     ];
 
+    const isDark = theme.palette.mode === 'dark';
+
     return (
-        <Box sx={{ py: { xs: 4, md: 8 }, bgcolor: '#f5f7fa' }}>
+        <Box sx={{ py: { xs: 4, md: 8 }, bgcolor: 'transparent' }}>
             <Container maxWidth="lg">
                 {/* Hero Section */}
                 <motion.div initial={{ opacity: 0, y: -30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
@@ -45,7 +47,7 @@ function AboutUs() {
                             sx={{
                                 fontWeight: 700,
                                 mb: 3,
-                                color: '#1a1a2e',
+                                color: 'text.primary',
                             }}
                         >
                             About TaskFlow
@@ -53,7 +55,7 @@ function AboutUs() {
                         <Typography
                             variant="body2"
                             sx={{
-                                color: '#666',
+                                color: 'text.secondary',
                                 maxWidth: '600px',
                                 mx: 'auto',
                                 lineHeight: 1.8,
@@ -73,7 +75,7 @@ function AboutUs() {
                         sx={{
                             p: { xs: 2.5, md: 4 },
                             mb: { xs: 4, md: 8 },
-                            bgcolor: 'white',
+                            bgcolor: 'background.paper',
                             borderRadius: 2,
                         }}
                     >
@@ -84,7 +86,7 @@ function AboutUs() {
                                     sx={{
                                         fontWeight: 700,
                                         mb: 2,
-                                        color: '#1a1a2e',
+                                        color: 'text.primary',
                                     }}
                                 >
                                     Our Mission
@@ -92,7 +94,7 @@ function AboutUs() {
                                 <Typography
                                     variant="body2"
                                     sx={{
-                                        color: '#666',
+                                        color: 'text.secondary',
                                         lineHeight: 1.8,
                                         mb: 2,
                                         fontSize: { xs: '0.85rem', sm: '1rem' }
@@ -105,7 +107,7 @@ function AboutUs() {
                                 <Typography
                                     variant="body2"
                                     sx={{
-                                        color: '#666',
+                                        color: 'text.secondary',
                                         lineHeight: 1.8,
                                         fontSize: { xs: '0.85rem', sm: '1rem' }
                                     }}
@@ -120,7 +122,7 @@ function AboutUs() {
                                         sx={{
                                             width: '100%',
                                             height: { xs: '200px', md: '300px' },
-                                            bgcolor: '#f0f0f5',
+                                            bgcolor: isDark ? 'rgba(255,255,255,0.06)' : '#f0f0f5',
                                             borderRadius: 2,
                                             display: 'flex',
                                             alignItems: 'center',
@@ -145,7 +147,7 @@ function AboutUs() {
                             sx={{
                                 fontWeight: 700,
                                 mb: { xs: 3, md: 6 },
-                                color: '#1a1a2e',
+                                color: 'text.primary',
                                 textAlign: 'center',
                             }}
                         >
@@ -164,12 +166,12 @@ function AboutUs() {
                                             sx={{
                                                 height: '100%',
                                                 textAlign: 'center',
-                                                boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                                                boxShadow: isDark ? '0 4px 14px rgba(0,0,0,0.35)' : '0 2px 8px rgba(0,0,0,0.1)',
                                                 borderRadius: 2,
                                                 p: { xs: 2, md: 3 },
                                                 transition: 'all 0.3s ease',
                                                 '&:hover': {
-                                                    boxShadow: '0 8px 16px rgba(108, 99, 255, 0.15)',
+                                                    boxShadow: isDark ? '0 10px 20px rgba(108, 99, 255, 0.2)' : '0 8px 16px rgba(108, 99, 255, 0.15)',
                                                 },
                                             }}
                                         >
@@ -182,7 +184,7 @@ function AboutUs() {
                                                     sx={{
                                                         fontWeight: 700,
                                                         mb: 1,
-                                                        color: '#1a1a2e',
+                                                        color: 'text.primary',
                                                     }}
                                                 >
                                                     {value.title}
@@ -205,7 +207,7 @@ function AboutUs() {
                         elevation={0}
                         sx={{
                             p: { xs: 2.5, md: 4 },
-                            bgcolor: 'white',
+                            bgcolor: 'background.paper',
                             borderRadius: 2,
                         }}
                     >
@@ -214,7 +216,7 @@ function AboutUs() {
                             sx={{
                                 fontWeight: 700,
                                 mb: 3,
-                                color: '#1a1a2e',
+                                color: 'text.primary',
                                 textAlign: 'center',
                             }}
                         >

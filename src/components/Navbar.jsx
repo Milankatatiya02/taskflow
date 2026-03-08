@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useThemeMode } from '../context/ThemeModeContext';
 import {
     AppBar,
     Toolbar,
@@ -16,6 +17,7 @@ import {
     ListItemText,
     Avatar,
     Chip,
+    Tooltip,
     useMediaQuery,
     useTheme
 } from '@mui/material';
@@ -25,12 +27,14 @@ import {
     Assignment as TaskIcon,
     Info as InfoIcon,
     ContactMail as ContactIcon,
-    Person as PersonIcon,
+    LightMode as LightModeIcon,
+    DarkMode as DarkModeIcon,
     Logout as LogoutIcon
 } from '@mui/icons-material';
 
 function Navbar() {
     const { user, logout } = useAuth();
+    const { mode, toggleMode } = useThemeMode();
     const navigate = useNavigate();
     const location = useLocation();
     const theme = useTheme();
@@ -57,13 +61,13 @@ function Navbar() {
 
     const drawer = (
         <Box sx={{ width: 250, pt: 2 }}>
-            <Box 
+            <Box
                 onClick={() => { navigate('/profile'); setDrawerOpen(false); }}
-                sx={{ 
-                    px: 2, 
-                    pb: 2, 
-                    display: 'flex', 
-                    alignItems: 'center', 
+                sx={{
+                    px: 2,
+                    pb: 2,
+                    display: 'flex',
+                    alignItems: 'center',
                     gap: 1.5,
                     cursor: 'pointer',
                     borderRadius: 1,
@@ -98,6 +102,12 @@ function Navbar() {
                     </ListItem>
                 ))}
                 <ListItem disablePadding>
+                    <ListItemButton onClick={toggleMode}>
+                        <ListItemIcon>{mode === 'light' ? <DarkModeIcon /> : <LightModeIcon />}</ListItemIcon>
+                        <ListItemText primary={mode === 'light' ? 'Dark Mode' : 'Light Mode'} />
+                    </ListItemButton>
+                </ListItem>
+                <ListItem disablePadding>
                     <ListItemButton onClick={handleLogout}>
                         <ListItemIcon><LogoutIcon /></ListItemIcon>
                         <ListItemText primary="Logout" />
@@ -113,9 +123,10 @@ function Navbar() {
                 position="sticky"
                 elevation={0}
                 sx={{
-                    bgcolor: '#fff',
-                    color: '#333',
-                    borderBottom: '1px solid #e0e0e0',
+                    bgcolor: theme.palette.background.paper,
+                    color: theme.palette.text.primary,
+                    borderBottom: `1px solid ${theme.palette.divider}`,
+                    backdropFilter: 'blur(8px)',
                 }}
             >
                 <Toolbar>
@@ -134,11 +145,11 @@ function Navbar() {
                             textDecoration: 'none',
                             color: '#6C63FF',
                             letterSpacing: '-0.5px',
-                            flexGrow: isMobile ? 1 : 0,
-                            mr: 4
+                            flexGrow: 1,
+                            mr: 2
                         }}
                     >
-                        📋 TaskFlow
+                        TaskFlow
                     </Typography>
 
                     {!isMobile && (
@@ -149,7 +160,7 @@ function Navbar() {
                                     startIcon={item.icon}
                                     onClick={() => navigate(item.path)}
                                     sx={{
-                                        color: location.pathname === item.path ? '#6C63FF' : '#666',
+                                        color: location.pathname === item.path ? '#6C63FF' : 'text.secondary',
                                         fontWeight: location.pathname === item.path ? 600 : 400,
                                         bgcolor: location.pathname === item.path ? 'rgba(108, 99, 255, 0.08)' : 'transparent',
                                         borderRadius: 2,
@@ -164,6 +175,12 @@ function Navbar() {
                         </Box>
                     )}
 
+                    <Tooltip title={mode === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}>
+                        <IconButton onClick={toggleMode} color="inherit" size="small" sx={{ mr: 1 }}>
+                            {mode === 'light' ? <DarkModeIcon /> : <LightModeIcon />}
+                        </IconButton>
+                    </Tooltip>
+
                     {!isMobile && (
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                             <Chip
@@ -172,7 +189,7 @@ function Navbar() {
                                 onClick={() => navigate('/profile')}
                                 variant="outlined"
                                 sx={{
-                                    borderColor: '#e0e0e0',
+                                    borderColor: 'divider',
                                     cursor: 'pointer',
                                     transition: 'all 0.3s ease',
                                     '&:hover': {
@@ -187,8 +204,8 @@ function Navbar() {
                                 startIcon={<LogoutIcon />}
                                 onClick={handleLogout}
                                 sx={{
-                                    color: '#999',
-                                    borderColor: '#e0e0e0',
+                                    color: 'text.secondary',
+                                    borderColor: 'divider',
                                     textTransform: 'none',
                                     '&:hover': { borderColor: '#f44336', color: '#f44336' }
                                 }}

@@ -9,8 +9,8 @@
 
 body {
   font-family: 'Inter', 'Roboto', sans-serif;
-  background-color: #f8f9fa;
-  color: #333;
+  background-color: transparent;
+  color: inherit;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -24,12 +24,12 @@ a {
   width: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #f0f0f0;
+  background: rgba(127, 127, 127, 0.15);
 }
 ::-webkit-scrollbar-thumb {
-  background: #ccc;
+  background: rgba(127, 127, 127, 0.45);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #aaa;
+  background: rgba(127, 127, 127, 0.7);
 }

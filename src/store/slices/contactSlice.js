@@ -1,4 +1,5 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
+import { contactAPI, handleAPIError } from '../../services/api';
 
 const initialState = {
   formData: {
@@ -13,17 +14,14 @@ const initialState = {
   submissionHistory: [],
 };
 
-export const submitContactForm = createAsyncThunk(
-  'contact/submitContactForm',
-  async (formData) => {
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    return {
-      ...formData,
-      submittedAt: new Date().toISOString(),
-    };
-  },
-);
+export const submitContactForm = createAsyncThunk('contact/submitContactForm', async (formData, thunkAPI) => {
+  try {
+    const response = await contactAPI.submit(formData);
+    return response.data;
+  } catch (error) {
+    return thunkAPI.rejectWithValue(handleAPIError(error).message);
+  }
+});
 
 const contactSlice = createSlice({
   name: 'contact',
@@ -57,7 +55,7 @@ const contactSlice = createSlice({
       })
       .addCase(submitContactForm.rejected, (state, action) => {
         state.loading = false;
-        state.error = action.error.message || 'Failed to submit the form.';
+        state.error = action.payload || 'Failed to submit the form.';
       });
   },
 });

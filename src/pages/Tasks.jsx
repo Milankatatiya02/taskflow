@@ -1,503 +1,824 @@
-import { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useEffect, useMemo, useState } from 'react';
 import { taskAPI, handleAPIError } from '../services/api';
 import { motion } from 'framer-motion';
 import {
-    Box, Typography, Button, TextField, Grid, Card, CardContent,
-    CardActions, Chip, Dialog, DialogTitle, DialogContent, DialogActions,
-    MenuItem, Select, FormControl, InputLabel, InputAdornment,
-    IconButton, Alert, Snackbar, Tooltip, Paper, Divider, Fab, useMediaQuery, useTheme
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardActions,
+  CardContent,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  FormControl,
+  Grid,
+  IconButton,
+  InputAdornment,
+  InputLabel,
+  MenuItem,
+  Paper,
+  Select,
+  Snackbar,
+  TextField,
+  Tooltip,
+  Typography,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import {
-    Add as AddIcon,
-    Edit as EditIcon,
-    Delete as DeleteIcon,
-    Search as SearchIcon,
-    FilterList as FilterIcon,
-    Close as CloseIcon,
-    Assignment as TaskIcon,
-    Flag as FlagIcon
+  Add as AddIcon,
+  Category as CategoryIcon,
+  CalendarMonth as CalendarIcon,
+  CheckCircle as CheckCircleIcon,
+  Close as CloseIcon,
+  Comment as CommentIcon,
+  Delete as DeleteIcon,
+  Edit as EditIcon,
+  Event as EventIcon,
+  FilterList as FilterIcon,
+  Flag as FlagIcon,
+  Psychology as AiIcon,
+  Search as SearchIcon,
+  Timer as TimerIcon,
+  ViewKanban as KanbanIcon,
+  ViewList as ListIcon,
+  Attachment as AttachmentIcon,
 } from '@mui/icons-material';
 
+const priorityRank = { High: 3, Medium: 2, Low: 1 };
+const baseCategories = ['General', 'Work', 'Personal', 'Health', 'Study', 'Finance', 'Shopping'];
+const recurrenceOptions = ['None', 'Daily', 'Weekly', 'Monthly'];
+const OFFLINE_OPS_KEY = 'taskflow_offline_ops';
+
+function startOfDay(date) {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function startOfWeek(date) {
+  const d = startOfDay(date);
+  const day = d.getDay();
+  d.setDate(d.getDate() - day);
+  return d;
+}
+
+function sameDay(a, b) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function parseLines(value) {
+  return value
+    .split('\n')
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+function nextDateByRecurrence(isoDate, recurrence) {
+  if (!isoDate || recurrence === 'None') return null;
+  const d = new Date(isoDate);
+  if (recurrence === 'Daily') d.setDate(d.getDate() + 1);
+  if (recurrence === 'Weekly') d.setDate(d.getDate() + 7);
+  if (recurrence === 'Monthly') d.setMonth(d.getMonth() + 1);
+  return d.toISOString();
+}
+
 function Tasks() {
-    const { user } = useAuth();
-    const theme = useTheme();
-    const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-    const [tasks, setTasks] = useState([]);
-    const [loading, setLoading] = useState(true);
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const [tasks, setTasks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState('list');
 
-    // Form state
-    const [openDialog, setOpenDialog] = useState(false);
-    const [editingTask, setEditingTask] = useState(null);
-    const [formData, setFormData] = useState({
-        title: '', description: '', status: 'Pending', priority: 'Medium'
+  const [openDialog, setOpenDialog] = useState(false);
+  const [editingTask, setEditingTask] = useState(null);
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    status: 'Pending',
+    priority: 'Medium',
+    category: 'General',
+    dueDate: '',
+    recurrence: 'None',
+    assignee: '',
+    collaboratorsText: '',
+    subtasksText: '',
+    attachmentLinksText: '',
+    estimatedMinutes: 0,
+  });
+  const [customCategory, setCustomCategory] = useState('');
+  const [formErrors, setFormErrors] = useState({});
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('All');
+  const [priorityFilter, setPriorityFilter] = useState('All');
+  const [categoryFilter, setCategoryFilter] = useState('All');
+  const [sortBy, setSortBy] = useState('newest');
+
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const [deleteDialog, setDeleteDialog] = useState({ open: false, taskId: null });
+  const [activeTimerTaskId, setActiveTimerTaskId] = useState(null);
+  const [timerSeconds, setTimerSeconds] = useState(0);
+  const [commentDraft, setCommentDraft] = useState('');
+  const [commentTaskId, setCommentTaskId] = useState(null);
+  const [draggedTaskId, setDraggedTaskId] = useState(null);
+  const [calendarScale, setCalendarScale] = useState('month');
+  const [calendarCursor, setCalendarCursor] = useState(new Date());
+
+  const blurActiveElement = () => {
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+  };
+
+  const queueOfflineOp = (op) => {
+    const current = JSON.parse(localStorage.getItem(OFFLINE_OPS_KEY) || '[]');
+    current.push(op);
+    localStorage.setItem(OFFLINE_OPS_KEY, JSON.stringify(current));
+  };
+
+  const syncOfflineOps = async () => {
+    const queued = JSON.parse(localStorage.getItem(OFFLINE_OPS_KEY) || '[]');
+    if (!queued.length) return;
+
+    const remaining = [];
+    for (const op of queued) {
+      try {
+        if (op.type === 'create') {
+          await taskAPI.createTask(op.payload);
+        } else if (op.type === 'update') {
+          await taskAPI.updateTask(op.id, op.payload);
+        } else if (op.type === 'delete') {
+          await taskAPI.deleteTask(op.id);
+        }
+      } catch {
+        remaining.push(op);
+      }
+    }
+
+    localStorage.setItem(OFFLINE_OPS_KEY, JSON.stringify(remaining));
+    if (remaining.length === 0) {
+      fetchTasks();
+    }
+  };
+
+  useEffect(() => {
+    fetchTasks();
+    window.addEventListener('online', syncOfflineOps);
+    return () => window.removeEventListener('online', syncOfflineOps);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('taskflow_cached_tasks', JSON.stringify(tasks));
+  }, [tasks]);
+
+  useEffect(() => {
+    if (!activeTimerTaskId) return;
+    const timer = setInterval(() => setTimerSeconds((s) => s + 1), 1000);
+    return () => clearInterval(timer);
+  }, [activeTimerTaskId]);
+
+  useEffect(() => {
+    if (Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+
+    const now = Date.now();
+    tasks.forEach((task) => {
+      if (!task.dueDate || task.status === 'Completed') return;
+      const remindAt = new Date(task.dueDate).getTime() - 60 * 60 * 1000;
+      const key = `reminded_${task.id}_${task.dueDate}`;
+      if (remindAt > now && Notification.permission === 'granted' && !localStorage.getItem(key)) {
+        const timeout = remindAt - now;
+        setTimeout(() => {
+          new Notification('Task Reminder', { body: `"${task.title}" is due soon.` });
+          localStorage.setItem(key, '1');
+        }, timeout);
+      }
     });
-    const [formErrors, setFormErrors] = useState({});
+  }, [tasks]);
 
-    // Filter state
-    const [searchQuery, setSearchQuery] = useState('');
-    const [statusFilter, setStatusFilter] = useState('All');
-    const [priorityFilter, setPriorityFilter] = useState('All');
+  const fetchTasks = async () => {
+    try {
+      const response = await taskAPI.getAllTasks();
+      setTasks(response.data || []);
+      setLoading(false);
+    } catch (error) {
+      const cached = JSON.parse(localStorage.getItem('taskflow_cached_tasks') || '[]');
+      setTasks(cached);
+      setLoading(false);
+      const err = handleAPIError(error);
+      showSnackbar(`Offline mode: ${err.message}`, 'warning');
+    }
+  };
 
-    // Snackbar state
-    const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const showSnackbar = (message, severity = 'success') => setSnackbar({ open: true, message, severity });
 
-    // Delete confirmation
-    const [deleteDialog, setDeleteDialog] = useState({ open: false, taskId: null });
+  const validateForm = () => {
+    const errors = {};
+    if (!formData.title.trim()) errors.title = 'Task title is required';
+    if (!formData.description.trim()) errors.description = 'Description is required';
+    if (formData.category === 'Custom' && !customCategory.trim()) errors.customCategory = 'Enter custom category';
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
 
-    useEffect(() => {
-        fetchTasks();
-    }, []);
+  const aiSuggest = () => {
+    const title = formData.title.toLowerCase();
+    let priority = 'Medium';
+    let category = 'General';
+    let description = formData.description;
 
-    const fetchTasks = async () => {
-        try {
-            const response = await taskAPI.getAllTasks();
-            setTasks(response.data || []);
-        } catch (error) {
-            const err = handleAPIError(error);
-            showSnackbar(err.message, 'error');
-        } finally {
-            setLoading(false);
-        }
+    if (title.includes('bug') || title.includes('urgent') || title.includes('fix')) priority = 'High';
+    if (title.includes('study') || title.includes('learn')) category = 'Study';
+    if (title.includes('invoice') || title.includes('budget')) category = 'Finance';
+    if (title.includes('gym') || title.includes('health')) category = 'Health';
+    if (!description.trim()) description = `Plan and complete: ${formData.title}. Define clear steps and expected output.`;
+
+    setFormData((prev) => ({ ...prev, priority, category, description }));
+    setCustomCategory('');
+  };
+
+  const buildPayload = () => {
+    const category = formData.category === 'Custom' ? customCategory.trim() : formData.category;
+    const subtasks = parseLines(formData.subtasksText).map((title) => ({ title, completed: false }));
+    const attachmentLinks = parseLines(formData.attachmentLinksText);
+    const collaborators = formData.collaboratorsText
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean);
+
+    return {
+      title: formData.title,
+      description: formData.description,
+      status: formData.status,
+      priority: formData.priority,
+      category,
+      dueDate: formData.dueDate ? new Date(formData.dueDate).toISOString() : null,
+      recurrence: formData.recurrence,
+      assignee: formData.assignee,
+      collaborators,
+      attachmentLinks,
+      subtasks,
+      estimatedMinutes: Number(formData.estimatedMinutes || 0),
+      spentMinutes: editingTask?.spentMinutes || 0,
+      comments: editingTask?.comments || [],
     };
+  };
 
-    // ─── Form Validation ───
-    const validateForm = () => {
-        const errors = {};
-        if (!formData.title.trim()) {
-            errors.title = 'Task title is required';
-        } else if (formData.title.trim().length < 3) {
-            errors.title = 'Title must be at least 3 characters';
-        }
-        if (!formData.description.trim()) {
-            errors.description = 'Description is required';
-        } else if (formData.description.trim().length < 5) {
-            errors.description = 'Description must be at least 5 characters';
-        }
-        setFormErrors(errors);
-        return Object.keys(errors).length === 0;
+  const maybeCreateRecurring = async (updatedTask) => {
+    if (updatedTask.status !== 'Completed' || !updatedTask.recurrence || updatedTask.recurrence === 'None') return;
+    const nextDate = nextDateByRecurrence(updatedTask.dueDate || new Date().toISOString(), updatedTask.recurrence);
+    if (!nextDate) return;
+
+    const cloned = {
+      ...updatedTask,
+      status: 'Pending',
+      dueDate: nextDate,
+      spentMinutes: 0,
+      comments: [],
+      subtasks: (updatedTask.subtasks || []).map((s) => ({ ...s, completed: false })),
     };
+    delete cloned.id;
+    delete cloned.createdAt;
+    delete cloned.updatedAt;
+    try {
+      const res = await taskAPI.createTask(cloned);
+      setTasks((prev) => [...prev, res.data]);
+    } catch {
+      queueOfflineOp({ type: 'create', payload: cloned });
+    }
+  };
 
-    // ─── CRUD Operations ───
-    const handleCreate = async () => {
-        if (!validateForm()) return;
-        try {
-            const response = await taskAPI.createTask(formData);
-            setTasks([...tasks, response.data]);
-            closeDialog();
-            showSnackbar('Task created successfully!');
-        } catch (error) {
-            const err = handleAPIError(error);
-            showSnackbar(err.message, 'error');
-        }
-    };
+  const handleCreate = async () => {
+    if (!validateForm()) return;
+    const payload = buildPayload();
+    try {
+      const response = await taskAPI.createTask(payload);
+      setTasks((prev) => [...prev, response.data]);
+      showSnackbar('Task created');
+    } catch (error) {
+      const err = handleAPIError(error);
+      const localTask = {
+        ...payload,
+        id: `local-${Date.now()}`,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      setTasks((prev) => [...prev, localTask]);
+      queueOfflineOp({ type: 'create', payload });
+      showSnackbar(`Saved offline: ${err.message}`, 'warning');
+    }
+    closeDialog();
+  };
 
-    const handleUpdate = async () => {
-        if (!validateForm()) return;
-        try {
-            const response = await taskAPI.updateTask(editingTask.id, formData);
-            setTasks(tasks.map(t => t.id === editingTask.id ? response.data : t));
-            closeDialog();
-            showSnackbar('Task updated successfully!');
-        } catch (error) {
-            const err = handleAPIError(error);
-            showSnackbar(err.message, 'error');
-        }
-    };
+  const handleUpdate = async () => {
+    if (!validateForm()) return;
+    const payload = buildPayload();
+    try {
+      const response = await taskAPI.updateTask(editingTask.id, payload);
+      setTasks((prev) => prev.map((t) => (t.id === editingTask.id ? response.data : t)));
+      showSnackbar('Task updated');
+      await maybeCreateRecurring(response.data);
+    } catch (error) {
+      const err = handleAPIError(error);
+      setTasks((prev) => prev.map((t) => (t.id === editingTask.id ? { ...t, ...payload, updatedAt: new Date().toISOString() } : t)));
+      queueOfflineOp({ type: 'update', id: editingTask.id, payload });
+      showSnackbar(`Saved offline: ${err.message}`, 'warning');
+    }
+    closeDialog();
+  };
 
-    const handleDelete = async () => {
-        try {
-            await taskAPI.deleteTask(deleteDialog.taskId);
-            setTasks(tasks.filter(t => t.id !== deleteDialog.taskId));
-            setDeleteDialog({ open: false, taskId: null });
-            showSnackbar('Task deleted successfully!');
-        } catch (error) {
-            const err = handleAPIError(error);
-            showSnackbar(err.message, 'error');
-        }
-    };
+  const handleDelete = async () => {
+    const id = deleteDialog.taskId;
+    setTasks((prev) => prev.filter((t) => t.id !== id));
+    setDeleteDialog({ open: false, taskId: null });
+    try {
+      await taskAPI.deleteTask(id);
+      showSnackbar('Task deleted');
+    } catch (error) {
+      queueOfflineOp({ type: 'delete', id });
+      showSnackbar(`Delete queued offline: ${handleAPIError(error).message}`, 'warning');
+    }
+  };
 
-    // ─── Dialog Helpers ───
-    const openCreateDialog = () => {
-        setEditingTask(null);
-        setFormData({ title: '', description: '', status: 'Pending', priority: 'Medium' });
-        setFormErrors({});
-        setOpenDialog(true);
-    };
+  const openCreateDialog = () => {
+    blurActiveElement();
+    setEditingTask(null);
+    setFormData({
+      title: '', description: '', status: 'Pending', priority: 'Medium', category: 'General', dueDate: '', recurrence: 'None', assignee: '', collaboratorsText: '', subtasksText: '', attachmentLinksText: '', estimatedMinutes: 0,
+    });
+    setCustomCategory('');
+    setOpenDialog(true);
+  };
 
-    const openEditDialog = (task) => {
-        setEditingTask(task);
-        setFormData({
-            title: task.title,
-            description: task.description,
-            status: task.status,
-            priority: task.priority
-        });
-        setFormErrors({});
-        setOpenDialog(true);
-    };
+  const openEditDialog = (task) => {
+    blurActiveElement();
+    setEditingTask(task);
+    setFormData({
+      title: task.title || '',
+      description: task.description || '',
+      status: task.status || 'Pending',
+      priority: task.priority || 'Medium',
+      category: baseCategories.includes(task.category) ? (task.category || 'General') : 'Custom',
+      dueDate: task.dueDate ? new Date(task.dueDate).toISOString().slice(0, 16) : '',
+      recurrence: task.recurrence || 'None',
+      assignee: task.assignee || '',
+      collaboratorsText: (task.collaborators || []).join(', '),
+      subtasksText: (task.subtasks || []).map((s) => s.title).join('\n'),
+      attachmentLinksText: (task.attachmentLinks || []).join('\n'),
+      estimatedMinutes: task.estimatedMinutes || 0,
+    });
+    setCustomCategory(baseCategories.includes(task.category) ? '' : (task.category || ''));
+    setOpenDialog(true);
+  };
 
-    const closeDialog = () => {
-        setOpenDialog(false);
-        setEditingTask(null);
-        setFormData({ title: '', description: '', status: 'Pending', priority: 'Medium' });
-        setFormErrors({});
-    };
+  const closeDialog = () => {
+    setOpenDialog(false);
+    setEditingTask(null);
+    setCommentTaskId(null);
+    setCommentDraft('');
+    setFormErrors({});
+  };
 
-    const showSnackbar = (message, severity = 'success') => {
-        setSnackbar({ open: true, message, severity });
-    };
+  const handleQuickStatus = async (task, status) => {
+    const payload = { ...task, status };
+    delete payload.id;
+    try {
+      const response = await taskAPI.updateTask(task.id, payload);
+      setTasks((prev) => prev.map((t) => (t.id === task.id ? response.data : t)));
+      await maybeCreateRecurring(response.data);
+    } catch {
+      setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status } : t)));
+      queueOfflineOp({ type: 'update', id: task.id, payload });
+    }
+  };
 
-    const handleFormChange = (e) => {
-        setFormData({ ...formData, [e.target.name]: e.target.value });
-        if (formErrors[e.target.name]) {
-            setFormErrors({ ...formErrors, [e.target.name]: '' });
-        }
-    };
+  const handleDropToStatus = async (status) => {
+    if (!draggedTaskId) return;
+    const task = tasks.find((t) => t.id === draggedTaskId);
+    setDraggedTaskId(null);
+    if (!task || task.status === status) return;
+    await handleQuickStatus(task, status);
+  };
 
-    // ─── Filtering ───
-    const filteredTasks = tasks.filter(task => {
-        const matchSearch = task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            task.description.toLowerCase().includes(searchQuery.toLowerCase());
-        const matchStatus = statusFilter === 'All' || task.status === statusFilter;
-        const matchPriority = priorityFilter === 'All' || task.priority === priorityFilter;
-        return matchSearch && matchStatus && matchPriority;
+  const addComment = async () => {
+    if (!commentTaskId || !commentDraft.trim()) return;
+    const task = tasks.find((t) => t.id === commentTaskId);
+    if (!task) return;
+    const comments = [...(task.comments || []), { text: commentDraft.trim(), createdAt: new Date().toISOString() }];
+    await handleQuickTaskPatch(task, { comments });
+    setCommentDraft('');
+    setCommentTaskId(null);
+  };
+
+  const handleQuickTaskPatch = async (task, patch) => {
+    const payload = { ...task, ...patch };
+    delete payload.id;
+    try {
+      const response = await taskAPI.updateTask(task.id, payload);
+      setTasks((prev) => prev.map((t) => (t.id === task.id ? response.data : t)));
+    } catch {
+      setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, ...patch } : t)));
+      queueOfflineOp({ type: 'update', id: task.id, payload });
+    }
+  };
+
+  const startTimer = (taskId) => {
+    setActiveTimerTaskId(taskId);
+    setTimerSeconds(0);
+  };
+
+  const stopTimer = async (task) => {
+    const minutes = Math.max(1, Math.round(timerSeconds / 60));
+    setActiveTimerTaskId(null);
+    setTimerSeconds(0);
+    await handleQuickTaskPatch(task, { spentMinutes: (task.spentMinutes || 0) + minutes });
+  };
+
+  const categoryOptions = useMemo(() => {
+    const categories = new Set(baseCategories);
+    tasks.forEach((task) => categories.add(task.category || 'General'));
+    return Array.from(categories);
+  }, [tasks]);
+
+  const filteredTasks = useMemo(() => {
+    const filtered = tasks.filter((task) => {
+      const matchSearch = `${task.title} ${task.description}`.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchStatus = statusFilter === 'All' || task.status === statusFilter;
+      const matchPriority = priorityFilter === 'All' || task.priority === priorityFilter;
+      const matchCategory = categoryFilter === 'All' || (task.category || 'General') === categoryFilter;
+      return matchSearch && matchStatus && matchPriority && matchCategory;
     });
 
-    // ─── Style Helpers ───
-    const getStatusColor = (status) => {
-        switch (status) {
-            case 'Completed': return 'success';
-            case 'In Progress': return 'warning';
-            case 'Pending': return 'error';
-            default: return 'default';
-        }
-    };
+    filtered.sort((a, b) => {
+      if (sortBy === 'oldest') return new Date(a.createdAt) - new Date(b.createdAt);
+      if (sortBy === 'priority') return (priorityRank[b.priority] || 0) - (priorityRank[a.priority] || 0);
+      if (sortBy === 'dueSoon') {
+        const aDate = a.dueDate ? new Date(a.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
+        const bDate = b.dueDate ? new Date(b.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
+        return aDate - bDate;
+      }
+      return new Date(b.createdAt) - new Date(a.createdAt);
+    });
+    return filtered;
+  }, [tasks, searchQuery, statusFilter, priorityFilter, categoryFilter, sortBy]);
 
-    const getPriorityColor = (priority) => {
-        switch (priority) {
-            case 'High': return '#F44336';
-            case 'Medium': return '#FF9800';
-            case 'Low': return '#4CAF50';
-            default: return '#999';
-        }
-    };
+  const groupedByStatus = useMemo(
+    () => ({
+      Pending: filteredTasks.filter((t) => t.status === 'Pending'),
+      'In Progress': filteredTasks.filter((t) => t.status === 'In Progress'),
+      Completed: filteredTasks.filter((t) => t.status === 'Completed'),
+    }),
+    [filteredTasks],
+  );
 
-    const formatDate = (dateStr) => {
-        return new Date(dateStr).toLocaleDateString('en-US', {
-            month: 'short', day: 'numeric', year: 'numeric'
-        });
-    };
+  const calendarDays = useMemo(() => {
+    const days = [];
+    if (calendarScale === 'week') {
+      const start = startOfWeek(calendarCursor);
+      for (let i = 0; i < 7; i += 1) {
+        const d = new Date(start);
+        d.setDate(start.getDate() + i);
+        days.push(d);
+      }
+      return days;
+    }
+
+    const monthStart = new Date(calendarCursor.getFullYear(), calendarCursor.getMonth(), 1);
+    const gridStart = startOfWeek(monthStart);
+    for (let i = 0; i < 42; i += 1) {
+      const d = new Date(gridStart);
+      d.setDate(gridStart.getDate() + i);
+      days.push(d);
+    }
+    return days;
+  }, [calendarCursor, calendarScale]);
+
+  const tasksByDate = useMemo(() => {
+    const map = {};
+    filteredTasks.forEach((task) => {
+      if (!task.dueDate) return;
+      const d = new Date(task.dueDate);
+      const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      if (!map[key]) map[key] = [];
+      map[key].push(task);
+    });
+    return map;
+  }, [filteredTasks]);
+
+  const getPriorityColor = (priority) => {
+    if (priority === 'High') return 'error';
+    if (priority === 'Medium') return 'warning';
+    if (priority === 'Low') return 'success';
+    return 'default';
+  };
+
+  const renderTaskCard = (task, options = {}) => {
+    const subtasks = task.subtasks || [];
+    const completedSubtasks = subtasks.filter((s) => s.completed).length;
+    const timerRunning = activeTimerTaskId === task.id;
+    const isDraggable = Boolean(options.draggable);
 
     return (
-        <Box sx={{ p: { xs: 1.5, sm: 2, md: 4 }, maxWidth: 1200, mx: 'auto' }}>
-            {/* Header */}
-            <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: { xs: 1.5, md: 2 } }}>
-                    <Box>
-                        <Typography variant={{ xs: 'h5', md: 'h4' }} fontWeight={700}>Tasks</Typography>
-                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.8rem', sm: '0.9rem' } }}>
-                            Manage your tasks • {filteredTasks.length} of {tasks.length} shown
-                        </Typography>
-                    </Box>
-                    <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                        <Button
-                            variant="contained"
-                            startIcon={<AddIcon />}
-                            onClick={openCreateDialog}
-                            size={isMobile ? 'small' : 'medium'}
-                            sx={{
-                                bgcolor: '#6C63FF',
-                                textTransform: 'none',
-                                borderRadius: 2,
-                                px: { xs: 2, md: 3 },
-                                fontWeight: 600,
-                                boxShadow: '0 4px 15px rgba(108, 99, 255, 0.3)',
-                                fontSize: { xs: 13, sm: 16 },
-                                '&:hover': { 
-                                    bgcolor: '#5A52E0',
-                                    transform: 'translateY(-2px)',
-                                    boxShadow: '0 6px 20px rgba(108, 99, 255, 0.4)'
-                                }
-                            }}
-                        >
-                            Add Task
-                        </Button>
-                    </motion.div>
-                </Box>
-            </motion.div>
+      <Card
+        key={task.id}
+        draggable={isDraggable}
+        onDragStart={() => setDraggedTaskId(task.id)}
+        onDragEnd={() => setDraggedTaskId(null)}
+        sx={{ borderRadius: 2, mb: 1.5, cursor: isDraggable ? 'grab' : 'default' }}
+      >
+        <CardContent sx={{ pb: 1 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1 }}>
+            <Typography fontWeight={600}>{task.title}</Typography>
+            <Chip size="small" label={task.priority} color={getPriorityColor(task.priority)} />
+          </Box>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>{task.description}</Typography>
 
-            {/* Filters */}
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.1 }}>
-                <Paper
-                    sx={{
-                        p: { xs: 1.5, sm: 2 }, mb: 3, borderRadius: { xs: 2, md: 3 },
-                        boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
-                        display: 'flex', gap: { xs: 1, sm: 2 }, flexWrap: 'wrap', alignItems: 'center'
-                    }}
-                >
-                    <FilterIcon sx={{ color: '#999', fontSize: { xs: 20, sm: 24 } }} />
-                    <TextField
-                        size="small"
-                        placeholder="Search tasks..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        sx={{ minWidth: { xs: 120, sm: 200 }, flexGrow: 1 }}
-                        InputProps={{
-                            startAdornment: (
-                                <InputAdornment position="start">
-                                    <SearchIcon sx={{ color: '#bbb', fontSize: 20 }} />
-                                </InputAdornment>
-                            )
-                        }}
-                    />
-                    <FormControl size="small" sx={{ minWidth: { xs: 100, md: 140 } }}>
-                        <InputLabel>Status</InputLabel>
-                        <Select value={statusFilter} label="Status" onChange={(e) => setStatusFilter(e.target.value)}>
-                            <MenuItem value="All">All Status</MenuItem>
-                            <MenuItem value="Pending">Pending</MenuItem>
-                            <MenuItem value="In Progress">In Progress</MenuItem>
-                            <MenuItem value="Completed">Completed</MenuItem>
-                        </Select>
-                    </FormControl>
-                    <FormControl size="small" sx={{ minWidth: { xs: 100, md: 140 } }}>
-                        <InputLabel>Priority</InputLabel>
-                        <Select value={priorityFilter} label="Priority" onChange={(e) => setPriorityFilter(e.target.value)}>
-                            <MenuItem value="All">All Priority</MenuItem>
-                            <MenuItem value="Low">Low</MenuItem>
-                            <MenuItem value="Medium">Medium</MenuItem>
-                            <MenuItem value="High">High</MenuItem>
-                        </Select>
-                    </FormControl>
-                </Paper>
-            </motion.div>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1 }}>
+            <Chip size="small" icon={<CategoryIcon />} label={task.category || 'General'} variant="outlined" />
+            {task.dueDate && <Chip size="small" icon={<EventIcon />} label={new Date(task.dueDate).toLocaleString()} variant="outlined" />}
+            {task.recurrence && task.recurrence !== 'None' && <Chip size="small" label={task.recurrence} color="secondary" variant="outlined" />}
+            {(task.attachmentLinks || []).length > 0 && <Chip size="small" icon={<AttachmentIcon />} label={`${task.attachmentLinks.length} attachments`} variant="outlined" />}
+            {(task.comments || []).length > 0 && <Chip size="small" icon={<CommentIcon />} label={`${task.comments.length} comments`} variant="outlined" />}
+          </Box>
 
-            {/* Task List */}
-            {filteredTasks.length === 0 ? (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5, delay: 0.2 }}>
-                    <Paper sx={{ p: { xs: 3, md: 6 }, textAlign: 'center', borderRadius: { xs: 2, md: 3 }, boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}>
-                        <TaskIcon sx={{ fontSize: { xs: 40, md: 60 }, color: '#ddd', mb: 2 }} />
-                        <Typography variant={{ xs: 'subtitle1', md: 'h6' }} color="text.secondary" gutterBottom>
-                            {tasks.length === 0 ? 'No tasks yet' : 'No tasks match your filters'}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: 'block', fontSize: { xs: '0.8rem', sm: '0.9rem' } }}>
-                            {tasks.length === 0 ? 'Click "Add Task" to create your first task.' : 'Try adjusting your filters.'}
-                        </Typography>
-                    </Paper>
-                </motion.div>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+            Subtasks: {completedSubtasks}/{subtasks.length} | Assignee: {task.assignee || 'Unassigned'} | Time: {task.spentMinutes || 0}m / {task.estimatedMinutes || 0}m
+          </Typography>
+        </CardContent>
+        <Divider />
+        <CardActions sx={{ justifyContent: 'space-between', flexWrap: 'wrap' }}>
+          <Box>
+            <Tooltip title="Edit"><IconButton size="small" onClick={() => openEditDialog(task)}><EditIcon fontSize="small" /></IconButton></Tooltip>
+            <Tooltip title="Delete"><IconButton size="small" color="error" onClick={() => setDeleteDialog({ open: true, taskId: task.id })}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
+            <Tooltip title="Comment"><IconButton size="small" onClick={() => setCommentTaskId(task.id)}><CommentIcon fontSize="small" /></IconButton></Tooltip>
+          </Box>
+          <Box>
+            {!timerRunning ? (
+              <Button size="small" startIcon={<TimerIcon />} onClick={() => startTimer(task.id)}>Start</Button>
             ) : (
-                <Grid container spacing={{ xs: 1.5, sm: 2, md: 2 }}>
-                    {filteredTasks.map((task, index) => (
-                        <Grid size={{ xs: 12, sm: 6, md: 4 }} key={task.id}>
-                            <motion.div
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: 0.2 + index * 0.05, duration: 0.5 }}
-                                whileHover={{ y: -4 }}
-                            >
-                                <Card
-                                    sx={{
-                                        borderRadius: { xs: 2, md: 3 },
-                                        boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
-                                        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                                        height: '100%',
-                                        display: 'flex',
-                                        flexDirection: 'column',
-                                        '&:hover': {
-                                            boxShadow: '0 8px 25px rgba(0,0,0,0.1)'
-                                        },
-                                        borderLeft: `4px solid ${getPriorityColor(task.priority)}`
-                                    }}
-                                >
-                                    <CardContent sx={{ pb: 1, flex: 1 }}>
-                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
-                                            <Typography variant={{ xs: 'subtitle2', sm: 'h6' }} fontWeight={600} sx={{ fontSize: { xs: 14, sm: 16 }, lineHeight: 1.4, flex: 1, mr: 1 }}>
-                                                {task.title}
-                                            </Typography>
-                                            <Chip
-                                                label={task.status}
-                                                color={getStatusColor(task.status)}
-                                                size="small"
-                                                variant="outlined"
-                                                sx={{ fontSize: { xs: 10, sm: 11 }, height: 24 }}
-                                            />
-                                        </Box>
-                                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2, minHeight: 40, fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
-                                            {task.description.length > 80 ? task.description.slice(0, 80) + '...' : task.description}
-                                        </Typography>
-                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <Chip
-                                                icon={<FlagIcon sx={{ fontSize: 14 }} />}
-                                                label={task.priority}
-                                                size="small"
-                                                sx={{
-                                                    bgcolor: `${getPriorityColor(task.priority)}15`,
-                                                    color: getPriorityColor(task.priority),
-                                                    fontWeight: 600,
-                                                    fontSize: { xs: 10, sm: 11 },
-                                                    '& .MuiChip-icon': { color: getPriorityColor(task.priority) }
-                                                }}
-                                            />
-                                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}>
-                                                {formatDate(task.createdAt)}
-                                            </Typography>
-                                        </Box>
-                                    </CardContent>
-                                    <Divider />
-                                    <CardActions sx={{ px: 2, py: 1 }}>
-                                        <Tooltip title="Edit">
-                                            <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
-                                                <IconButton size="small" onClick={() => openEditDialog(task)} sx={{ color: '#6C63FF' }}>
-                                                    <EditIcon fontSize="small" />
-                                                </IconButton>
-                                            </motion.div>
-                                        </Tooltip>
-                                        <Tooltip title="Delete">
-                                            <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
-                                                <IconButton
-                                                    size="small"
-                                                    onClick={() => setDeleteDialog({ open: true, taskId: task.id })}
-                                                    sx={{ color: '#F44336' }}
-                                                >
-                                                    <DeleteIcon fontSize="small" />
-                                                </IconButton>
-                                            </motion.div>
-                                        </Tooltip>
-                                    </CardActions>
-                                </Card>
-                            </motion.div>
-                        </Grid>
-                    ))}
-                </Grid>
+              <Button size="small" color="warning" startIcon={<TimerIcon />} onClick={() => stopTimer(task)}>Stop {Math.floor(timerSeconds / 60)}m</Button>
             )}
-
-            {/* Create/Edit Task Dialog */}
-            <Dialog
-                open={openDialog}
-                onClose={closeDialog}
-                maxWidth="sm"
-                fullWidth
-                PaperProps={{ sx: { borderRadius: 3 } }}
-            >
-                <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Typography variant="h6" fontWeight={600}>
-                        {editingTask ? 'Edit Task' : 'Create New Task'}
-                    </Typography>
-                    <IconButton onClick={closeDialog} size="small">
-                        <CloseIcon />
-                    </IconButton>
-                </DialogTitle>
-                <DialogContent>
-                    <Box sx={{ pt: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                        <TextField
-                            fullWidth
-                            label="Task Title"
-                            name="title"
-                            value={formData.title}
-                            onChange={handleFormChange}
-                            error={!!formErrors.title}
-                            helperText={formErrors.title}
-                            placeholder="Enter task title"
-                        />
-                        <TextField
-                            fullWidth
-                            label="Description"
-                            name="description"
-                            value={formData.description}
-                            onChange={handleFormChange}
-                            error={!!formErrors.description}
-                            helperText={formErrors.description}
-                            multiline
-                            rows={3}
-                            placeholder="Enter task description"
-                        />
-                        <FormControl fullWidth>
-                            <InputLabel>Status</InputLabel>
-                            <Select name="status" value={formData.status} label="Status" onChange={handleFormChange}>
-                                <MenuItem value="Pending">Pending</MenuItem>
-                                <MenuItem value="In Progress">In Progress</MenuItem>
-                                <MenuItem value="Completed">Completed</MenuItem>
-                            </Select>
-                        </FormControl>
-                        <FormControl fullWidth>
-                            <InputLabel>Priority</InputLabel>
-                            <Select name="priority" value={formData.priority} label="Priority" onChange={handleFormChange}>
-                                <MenuItem value="Low">Low</MenuItem>
-                                <MenuItem value="Medium">Medium</MenuItem>
-                                <MenuItem value="High">High</MenuItem>
-                            </Select>
-                        </FormControl>
-                    </Box>
-                </DialogContent>
-                <DialogActions sx={{ px: 3, pb: 2 }}>
-                    <Button onClick={closeDialog} sx={{ textTransform: 'none', color: '#999' }}>
-                        Cancel
-                    </Button>
-                    <Button
-                        variant="contained"
-                        onClick={editingTask ? handleUpdate : handleCreate}
-                        sx={{
-                            bgcolor: '#6C63FF',
-                            textTransform: 'none',
-                            borderRadius: 2,
-                            fontWeight: 600,
-                            '&:hover': { bgcolor: '#5A52E0' }
-                        }}
-                    >
-                        {editingTask ? 'Update Task' : 'Create Task'}
-                    </Button>
-                </DialogActions>
-            </Dialog>
-
-            {/* Delete Confirmation Dialog */}
-            <Dialog
-                open={deleteDialog.open}
-                onClose={() => setDeleteDialog({ open: false, taskId: null })}
-                PaperProps={{ sx: { borderRadius: 3 } }}
-            >
-                <DialogTitle>
-                    <Typography variant="h6" fontWeight={600}>Delete Task?</Typography>
-                </DialogTitle>
-                <DialogContent>
-                    <Typography color="text.secondary">
-                        Are you sure you want to delete this task? This action cannot be undone.
-                    </Typography>
-                </DialogContent>
-                <DialogActions sx={{ px: 3, pb: 2 }}>
-                    <Button
-                        onClick={() => setDeleteDialog({ open: false, taskId: null })}
-                        sx={{ textTransform: 'none', color: '#999' }}
-                    >
-                        Cancel
-                    </Button>
-                    <Button
-                        variant="contained"
-                        color="error"
-                        onClick={handleDelete}
-                        sx={{ textTransform: 'none', borderRadius: 2, fontWeight: 600 }}
-                    >
-                        Delete
-                    </Button>
-                </DialogActions>
-            </Dialog>
-
-            {/* Snackbar for notifications */}
-            <Snackbar
-                open={snackbar.open}
-                autoHideDuration={3000}
-                onClose={() => setSnackbar({ ...snackbar, open: false })}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-            >
-                <Alert
-                    severity={snackbar.severity}
-                    onClose={() => setSnackbar({ ...snackbar, open: false })}
-                    sx={{ borderRadius: 2 }}
-                >
-                    {snackbar.message}
-                </Alert>
-            </Snackbar>
-        </Box>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            {task.status !== 'Pending' && <Button size="small" onClick={() => handleQuickStatus(task, 'Pending')}>Pending</Button>}
+            {task.status !== 'In Progress' && <Button size="small" onClick={() => handleQuickStatus(task, 'In Progress')}>Progress</Button>}
+            {task.status !== 'Completed' && <Button size="small" color="success" onClick={() => handleQuickStatus(task, 'Completed')}>Done</Button>}
+          </Box>
+        </CardActions>
+      </Card>
     );
+  };
+
+  return (
+    <Box sx={{ p: { xs: 1.5, sm: 2, md: 4 }, maxWidth: 1280, mx: 'auto' }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
+        <Box>
+          <Typography variant="h4" fontWeight={700}>Tasks</Typography>
+          <Typography variant="body2" color="text.secondary">Kanban, Calendar, Recurring, Subtasks, Comments, Time tracking, Offline sync and reminders</Typography>
+        </Box>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button variant={viewMode === 'list' ? 'contained' : 'outlined'} startIcon={<ListIcon />} onClick={() => setViewMode('list')}>List</Button>
+          <Button variant={viewMode === 'kanban' ? 'contained' : 'outlined'} startIcon={<KanbanIcon />} onClick={() => setViewMode('kanban')}>Kanban</Button>
+          <Button variant={viewMode === 'calendar' ? 'contained' : 'outlined'} startIcon={<CalendarIcon />} onClick={() => setViewMode('calendar')}>Calendar</Button>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreateDialog}>Add Task</Button>
+        </Box>
+      </Box>
+
+      <Paper sx={{ p: 2, mb: 2, display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+        <FilterIcon color="action" />
+        <TextField
+          size="small"
+          placeholder="Search..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
+          sx={{ minWidth: 200, flexGrow: 1 }}
+        />
+        <FormControl size="small" sx={{ minWidth: 120 }}>
+          <InputLabel>Status</InputLabel>
+          <Select value={statusFilter} label="Status" onChange={(e) => setStatusFilter(e.target.value)}>
+            <MenuItem value="All">All</MenuItem>
+            <MenuItem value="Pending">Pending</MenuItem>
+            <MenuItem value="In Progress">In Progress</MenuItem>
+            <MenuItem value="Completed">Completed</MenuItem>
+          </Select>
+        </FormControl>
+        <FormControl size="small" sx={{ minWidth: 120 }}>
+          <InputLabel>Priority</InputLabel>
+          <Select value={priorityFilter} label="Priority" onChange={(e) => setPriorityFilter(e.target.value)}>
+            <MenuItem value="All">All</MenuItem>
+            <MenuItem value="Low">Low</MenuItem>
+            <MenuItem value="Medium">Medium</MenuItem>
+            <MenuItem value="High">High</MenuItem>
+          </Select>
+        </FormControl>
+        <FormControl size="small" sx={{ minWidth: 140 }}>
+          <InputLabel>Category</InputLabel>
+          <Select value={categoryFilter} label="Category" onChange={(e) => setCategoryFilter(e.target.value)}>
+            <MenuItem value="All">All</MenuItem>
+            {categoryOptions.map((c) => <MenuItem key={c} value={c}>{c}</MenuItem>)}
+          </Select>
+        </FormControl>
+        <FormControl size="small" sx={{ minWidth: 130 }}>
+          <InputLabel>Sort</InputLabel>
+          <Select value={sortBy} label="Sort" onChange={(e) => setSortBy(e.target.value)}>
+            <MenuItem value="newest">Newest</MenuItem>
+            <MenuItem value="oldest">Oldest</MenuItem>
+            <MenuItem value="priority">Priority</MenuItem>
+            <MenuItem value="dueSoon">Due Soon</MenuItem>
+          </Select>
+        </FormControl>
+      </Paper>
+
+      {loading ? <Typography color="text.secondary">Loading...</Typography> : null}
+
+      {!loading && viewMode === 'list' && <Box>{filteredTasks.map(renderTaskCard)}</Box>}
+
+      {!loading && viewMode === 'kanban' && (
+        <Grid container spacing={2}>
+          {['Pending', 'In Progress', 'Completed'].map((status) => (
+            <Grid size={{ xs: 12, md: 4 }} key={status}>
+              <Paper
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => handleDropToStatus(status)}
+                sx={{
+                  p: 1.5,
+                  minHeight: 300,
+                  border: '1px dashed',
+                  borderColor: draggedTaskId ? 'primary.main' : 'divider',
+                  bgcolor: draggedTaskId ? 'action.hover' : 'background.paper',
+                }}
+              >
+                <Typography fontWeight={700} sx={{ mb: 1 }}>{status}</Typography>
+                {groupedByStatus[status].map((task) => renderTaskCard(task, { draggable: true }))}
+              </Paper>
+            </Grid>
+          ))}
+        </Grid>
+      )}
+
+      {!loading && viewMode === 'calendar' && (
+        <Box>
+          <Paper sx={{ p: 1.5, mb: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button size="small" onClick={() => setCalendarScale('week')} variant={calendarScale === 'week' ? 'contained' : 'outlined'}>Week</Button>
+              <Button size="small" onClick={() => setCalendarScale('month')} variant={calendarScale === 'month' ? 'contained' : 'outlined'}>Month</Button>
+            </Box>
+            <Typography fontWeight={700}>
+              {calendarScale === 'month'
+                ? calendarCursor.toLocaleString(undefined, { month: 'long', year: 'numeric' })
+                : `Week of ${startOfWeek(calendarCursor).toLocaleDateString()}`}
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button size="small" onClick={() => setCalendarCursor(new Date())}>Today</Button>
+              <Button
+                size="small"
+                onClick={() =>
+                  setCalendarCursor((prev) => {
+                    const d = new Date(prev);
+                    if (calendarScale === 'month') d.setMonth(d.getMonth() - 1);
+                    else d.setDate(d.getDate() - 7);
+                    return d;
+                  })
+                }
+              >
+                Prev
+              </Button>
+              <Button
+                size="small"
+                onClick={() =>
+                  setCalendarCursor((prev) => {
+                    const d = new Date(prev);
+                    if (calendarScale === 'month') d.setMonth(d.getMonth() + 1);
+                    else d.setDate(d.getDate() + 7);
+                    return d;
+                  })
+                }
+              >
+                Next
+              </Button>
+            </Box>
+          </Paper>
+
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0,1fr))', gap: 1 }}>
+            {calendarDays.map((day) => {
+              const key = `${day.getFullYear()}-${day.getMonth()}-${day.getDate()}`;
+              const dayTasks = tasksByDate[key] || [];
+              const isCurrentMonth = day.getMonth() === calendarCursor.getMonth();
+              const isToday = sameDay(day, new Date());
+              return (
+                <Paper key={key} sx={{ p: 1, minHeight: 120, opacity: calendarScale === 'month' && !isCurrentMonth ? 0.55 : 1, border: isToday ? '1px solid' : '1px solid', borderColor: isToday ? 'primary.main' : 'divider' }}>
+                  <Typography variant="caption" fontWeight={700}>{day.toLocaleDateString(undefined, { day: '2-digit', month: 'short' })}</Typography>
+                  <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                    {dayTasks.slice(0, 3).map((task) => (
+                      <Chip
+                        key={task.id}
+                        size="small"
+                        label={task.title}
+                        color={task.priority === 'High' ? 'error' : task.priority === 'Medium' ? 'warning' : 'default'}
+                        onClick={() => openEditDialog(task)}
+                      />
+                    ))}
+                    {dayTasks.length > 3 && <Typography variant="caption" color="text.secondary">+{dayTasks.length - 3} more</Typography>}
+                  </Box>
+                </Paper>
+              );
+            })}
+          </Box>
+        </Box>
+      )}
+
+      <Dialog open={openDialog} onClose={closeDialog} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Box component="span" sx={{ typography: 'h6', fontWeight: 600 }}>{editingTask ? 'Edit Task' : 'Create Task'}</Box>
+          <Box>
+            <Button size="small" startIcon={<AiIcon />} onClick={aiSuggest}>AI Suggest</Button>
+            <IconButton onClick={closeDialog} size="small"><CloseIcon /></IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ pt: 0.5 }}>
+            <Grid size={{ xs: 12, md: 6 }}>
+              <TextField fullWidth label="Title" name="title" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} error={!!formErrors.title} helperText={formErrors.title} sx={{ mb: 2 }} />
+              <TextField fullWidth label="Description" multiline rows={3} name="description" value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} error={!!formErrors.description} helperText={formErrors.description} sx={{ mb: 2 }} />
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel>Category</InputLabel>
+                <Select label="Category" name="category" value={formData.category} onChange={(e) => setFormData({ ...formData, category: e.target.value })}>
+                  {baseCategories.map((c) => <MenuItem key={c} value={c}>{c}</MenuItem>)}
+                  <MenuItem value="Custom">Custom...</MenuItem>
+                </Select>
+              </FormControl>
+              {formData.category === 'Custom' && <TextField fullWidth label="Custom Category" value={customCategory} onChange={(e) => setCustomCategory(e.target.value)} error={!!formErrors.customCategory} helperText={formErrors.customCategory} sx={{ mb: 2 }} />}
+              <TextField fullWidth type="datetime-local" label="Deadline" name="dueDate" value={formData.dueDate} onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })} InputLabelProps={{ shrink: true }} sx={{ mb: 2 }} />
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel>Recurrence</InputLabel>
+                <Select label="Recurrence" value={formData.recurrence} onChange={(e) => setFormData({ ...formData, recurrence: e.target.value })}>
+                  {recurrenceOptions.map((r) => <MenuItem key={r} value={r}>{r}</MenuItem>)}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid size={{ xs: 12, md: 6 }}>
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel>Status</InputLabel>
+                <Select label="Status" value={formData.status} onChange={(e) => setFormData({ ...formData, status: e.target.value })}>
+                  <MenuItem value="Pending">Pending</MenuItem>
+                  <MenuItem value="In Progress">In Progress</MenuItem>
+                  <MenuItem value="Completed">Completed</MenuItem>
+                </Select>
+              </FormControl>
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel>Priority</InputLabel>
+                <Select label="Priority" value={formData.priority} onChange={(e) => setFormData({ ...formData, priority: e.target.value })}>
+                  <MenuItem value="Low">Low</MenuItem>
+                  <MenuItem value="Medium">Medium</MenuItem>
+                  <MenuItem value="High">High</MenuItem>
+                </Select>
+              </FormControl>
+              <TextField fullWidth label="Assignee (email/name)" value={formData.assignee} onChange={(e) => setFormData({ ...formData, assignee: e.target.value })} sx={{ mb: 2 }} />
+              <TextField fullWidth label="Collaborators (comma separated)" value={formData.collaboratorsText} onChange={(e) => setFormData({ ...formData, collaboratorsText: e.target.value })} sx={{ mb: 2 }} />
+              <TextField fullWidth type="number" label="Estimated Minutes" value={formData.estimatedMinutes} onChange={(e) => setFormData({ ...formData, estimatedMinutes: e.target.value })} sx={{ mb: 2 }} />
+              <TextField fullWidth multiline rows={3} label="Subtasks (one per line)" value={formData.subtasksText} onChange={(e) => setFormData({ ...formData, subtasksText: e.target.value })} sx={{ mb: 2 }} />
+              <TextField fullWidth multiline rows={3} label="Attachment links (one per line)" value={formData.attachmentLinksText} onChange={(e) => setFormData({ ...formData, attachmentLinksText: e.target.value })} />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeDialog}>Cancel</Button>
+          <Button variant="contained" onClick={editingTask ? handleUpdate : handleCreate}>{editingTask ? 'Update' : 'Create'}</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={deleteDialog.open} onClose={() => setDeleteDialog({ open: false, taskId: null })}>
+        <DialogTitle>Delete Task?</DialogTitle>
+        <DialogContent><Typography color="text.secondary">This action cannot be undone.</Typography></DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialog({ open: false, taskId: null })}>Cancel</Button>
+          <Button color="error" variant="contained" onClick={handleDelete}>Delete</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(commentTaskId)} onClose={() => setCommentTaskId(null)}>
+        <DialogTitle>Add Comment</DialogTitle>
+        <DialogContent>
+          <TextField fullWidth multiline rows={3} value={commentDraft} onChange={(e) => setCommentDraft(e.target.value)} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCommentTaskId(null)}>Cancel</Button>
+          <Button variant="contained" onClick={addComment}>Add</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar open={snackbar.open} autoHideDuration={3000} onClose={() => setSnackbar((s) => ({ ...s, open: false }))}>
+        <Alert severity={snackbar.severity} onClose={() => setSnackbar((s) => ({ ...s, open: false }))}>{snackbar.message}</Alert>
+      </Snackbar>
+    </Box>
+  );
 }
 
 export default Tasks;
