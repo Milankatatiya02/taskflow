@@ -58,7 +58,7 @@ function Login() {
         setLoading(false);
 
         if (result.success) {
-            navigate('/');
+            navigate('/dashboard');
         } else {
             setServerError(result.message);
         }
@@ -170,6 +170,12 @@ function Login() {
                             >
                                 {loading ? 'Signing in...' : 'Sign In'}
                             </Button>
+
+                            <Box sx={{ textAlign: 'center', mt: 1, mb: 1 }}>
+                                <Link to="/forgot-password" style={{ color: theme.palette.text.secondary, fontSize: '0.85rem', textDecoration: 'none' }}>
+                                    Forgot your password?
+                                </Link>
+                            </Box>
 
                             <Typography variant="body2" textAlign="center" color="text.secondary" sx={{ fontSize: { xs: '0.85rem', sm: '0.875rem' } }}>
                                 Don't have an account?{' '}

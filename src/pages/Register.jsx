@@ -71,7 +71,7 @@ function Register() {
         setLoading(false);
 
         if (result.success) {
-            navigate('/login');
+            navigate('/dashboard');
         } else {
             setServerError(result.message);
         }

@@ -6,13 +6,17 @@ import Navbar from './components/Navbar';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
 import Register from './pages/Register';
-import Home from './pages/Home';
+import Landing from './pages/Landing';
+import Dashboard from './pages/Dashboard';
 import Tasks from './pages/Tasks';
+import Projects from './pages/Projects';
+import Notifications from './pages/Notifications';
+import Profile from './pages/Profile';
 import AboutUs from './pages/AboutUs';
 import ContactUs from './pages/ContactUs';
-import Profile from './pages/Profile';
+import ForgotPassword from './pages/ForgotPassword';
+import NotFound from './pages/NotFound';
 
-// Wrapper to handle auth redirects
 function AppRoutes() {
   const { user, loading } = useAuth();
 
@@ -22,14 +26,26 @@ function AppRoutes() {
     <>
       <Navbar />
       <Routes>
-        <Route path="/login" element={user ? <Navigate to="/" /> : <Login />} />
-        <Route path="/register" element={user ? <Navigate to="/" /> : <Register />} />
-        <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
+        {/* Public routes */}
+        <Route path="/login" element={user ? <Navigate to="/dashboard" /> : <Login />} />
+        <Route path="/register" element={user ? <Navigate to="/dashboard" /> : <Register />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ForgotPassword />} />
+
+        {/* Landing or Dashboard */}
+        <Route path="/" element={user ? <Navigate to="/dashboard" /> : <Landing />} />
+
+        {/* Protected routes */}
+        <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
         <Route path="/tasks" element={<ProtectedRoute><Tasks /></ProtectedRoute>} />
+        <Route path="/projects" element={<ProtectedRoute><Projects /></ProtectedRoute>} />
+        <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
+        <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
         <Route path="/aboutus" element={<ProtectedRoute><AboutUs /></ProtectedRoute>} />
         <Route path="/contactus" element={<ProtectedRoute><ContactUs /></ProtectedRoute>} />
-        <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-        <Route path="*" element={<Navigate to="/" />} />
+
+        {/* 404 */}
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </>
   );

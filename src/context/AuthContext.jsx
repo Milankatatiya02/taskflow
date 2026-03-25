@@ -3,13 +3,12 @@ import axios from 'axios';
 
 const AuthContext = createContext(null);
 
-const API_URL = 'http://localhost:5000/api/auth';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Load user from localStorage on mount
   useEffect(() => {
     const savedUser = localStorage.getItem('taskflow_user');
     const savedToken = localStorage.getItem('token');
@@ -19,45 +18,51 @@ export function AuthProvider({ children }) {
     setLoading(false);
   }, []);
 
-  // Login function
   const login = async (email, password) => {
     try {
-      const response = await axios.post(`${API_URL}/login`, { email, password });
+      const response = await axios.post(`${API_URL}/auth/login`, { email, password });
       const userData = response.data.user;
       const token = response.data.token;
+      const refreshToken = response.data.refreshToken;
       setUser(userData);
       localStorage.setItem('taskflow_user', JSON.stringify(userData));
       localStorage.setItem('token', token);
+      if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
       return { success: true };
     } catch (error) {
       return {
         success: false,
-        message: error.response?.data?.detail || 'Login failed'
+        message: error.response?.data?.detail || 'Login failed',
       };
     }
   };
 
-  // Register function
   const register = async (name, email, password) => {
     try {
-      const response = await axios.post(`${API_URL}/register`, { name, email, password });
+      const response = await axios.post(`${API_URL}/auth/register`, { name, email, password });
+      const userData = response.data.user;
+      const token = response.data.token;
+      const refreshToken = response.data.refreshToken;
+      setUser(userData);
+      localStorage.setItem('taskflow_user', JSON.stringify(userData));
+      localStorage.setItem('token', token);
+      if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
       return { success: true, message: response.data.message };
     } catch (error) {
       return {
         success: false,
-        message: error.response?.data?.detail || 'Registration failed'
+        message: error.response?.data?.detail || 'Registration failed',
       };
     }
   };
 
-  // Logout function
   const logout = () => {
     setUser(null);
     localStorage.removeItem('taskflow_user');
     localStorage.removeItem('token');
+    localStorage.removeItem('refreshToken');
   };
 
-  // Update user function
   const updateUser = (updatedUserData) => {
     setUser(updatedUserData);
     localStorage.setItem('taskflow_user', JSON.stringify(updatedUserData));
